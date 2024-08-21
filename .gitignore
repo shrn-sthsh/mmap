@@ -1,0 +1,6 @@
+# LSP cache & sources
+.cache
+compile_commands.json
+
+# Build directory
+build
