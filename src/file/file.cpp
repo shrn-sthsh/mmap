@@ -7,19 +7,17 @@
 
 #include <util/record.hpp>
 
-#include "mmap_file.hpp"
-#include "lib/mmap.hpp"
+#include "file.hpp"
 
 
-template <typename data_type>
-mmap::file<data_type>::file
+mmap::file::file
 (
     // Required parameters
     const std::string            &file_path,
-    const size_type               file_capacity,
+    const size_type               file_capacity_bytes,
 
     // Advanced parameters
-    const size_type               file_index,
+    const size_type               file_offset_bytes,
     const address_type            base_address,
 
     // System call flags
@@ -32,7 +30,7 @@ mmap::file<data_type>::file
 )
 {
     // Validate file path
-    bool valid_path = mmap::file<data_type>::valid_path(file_path);
+    bool valid_path = mmap::file::valid_path(file_path);
     if (!valid_path)
     {
         util::log::record
@@ -46,10 +44,10 @@ mmap::file<data_type>::file
     } 
 
     // metadata
-    this->file_path     = file_path;
-    this->file_capacity = file_capacity * sizeof(data_type);
-    this->file_offset   = file_index * sizeof(data_type);
-    this->base_address  = base_address;
+    this->file_path           = file_path;
+    this->file_capacity_bytes = file_capacity_bytes;
+    this->file_offset_bytes   = file_offset_bytes;
+    this->base_address        = base_address;
 
     // flags
     this->open_flag     = open_flag;
@@ -60,17 +58,15 @@ mmap::file<data_type>::file
     this->remap_flag    = remap_flag;
 }
 
-template <typename data_type>
-mmap::file<data_type>::~file() noexcept
+mmap::file::~file() noexcept
 {
     if (this->file_address)
-        this->close_and_unmap();
+        this->close();
 }
 
 
-template <typename data_type>
 mmap::address_type
-inline mmap::file<data_type>::open() noexcept
+inline mmap::file::open() noexcept
 {
     return this->open_and_map
     (
@@ -81,9 +77,8 @@ inline mmap::file<data_type>::open() noexcept
     );
 }
 
-template <typename data_type>
 mmap::address_type
-mmap::file<data_type>::open_and_map
+mmap::file::open_and_map
 (
     sys::file::flag_code open_flag,
     sys::file::flag_code lock_flag,
@@ -105,7 +100,7 @@ mmap::file<data_type>::open_and_map
     }
     
     // Check file path is still valid
-    bool valid_path = mmap::file<data_type>::valid_path(file_path);
+    bool valid_path = mmap::file::valid_path(file_path);
     if (!valid_path)
     {
         util::log::record
@@ -157,7 +152,7 @@ mmap::file<data_type>::open_and_map
     sys::file::status_code resize_status = sys::file::resize
     (
         this->file_descriptor,
-        this->file_capacity
+        this->file_capacity_bytes
     );
     if (resize_status == mmap::INTERNAL_ERROR_CODE)
     {
@@ -174,11 +169,11 @@ mmap::file<data_type>::open_and_map
     address_type file_address = sys::memory::map
     (
         base_address,
-        this->file_capacity, 
+        this->file_capacity_bytes, 
         protocol_flag,
         mapping_flag,
         this->file_descriptor, 
-        this->file_offset
+        this->file_offset_bytes
     );
     if (file_address == nullptr)
     {
@@ -196,24 +191,22 @@ mmap::file<data_type>::open_and_map
 }
 
 
-template <typename data_type>
 mmap::status_code
-inline mmap::file<data_type>::flush() noexcept
+inline mmap::file::flush() noexcept
 {
     return this->flush
     (
         this->file_address,
-        this->file_capacity,
+        this->file_capacity_bytes,
         this->sync_flag
     );
 }
 
-template <typename data_type>
 mmap::status_code
-mmap::file<data_type>::flush
+mmap::file::flush
 (
     mmap::address_type     file_address,
-    mmap::size_type        size,
+    mmap::size_type        chunk_size_bytes,
     sys::memory::flag_code sync_flag
 ) noexcept
 {
@@ -230,7 +223,7 @@ mmap::file<data_type>::flush
     }
     
     // Check file path is still valid
-    bool valid_path = mmap::file<data_type>::valid_path(file_path);
+    bool valid_path = mmap::file::valid_path(file_path);
     if (!valid_path)
     {
         util::log::record
@@ -247,14 +240,14 @@ mmap::file<data_type>::flush
     sys::memory::status_code sync_status = sys::memory::sync
     (
         file_address,
-        size * sizeof(data_type),
+        chunk_size_bytes,
         sync_flag
     );
     if (sync_status == mmap::INTERNAL_ERROR_CODE)
     {
         std::size_t bound 
             = reinterpret_cast<std::size_t>(file_address) 
-            + size * sizeof(data_type);
+            + chunk_size_bytes;
 
         std::stringstream stream;
         stream << "Unable to synchronize data chunk from address "
@@ -274,16 +267,14 @@ mmap::file<data_type>::flush
 }
 
 
-template <typename data_type>
 mmap::status_code
-inline mmap::file<data_type>::close() noexcept
+inline mmap::file::close() noexcept
 {
     return this->close_and_unmap(this->sync_flag);
 }
 
-template <typename data_type>
 mmap::status_code
-mmap::file<data_type>::close_and_unmap
+mmap::file::close_and_unmap
 (
     sys::memory::flag_code sync_flag
 ) noexcept
@@ -301,7 +292,7 @@ mmap::file<data_type>::close_and_unmap
     }
 
     // Check file path is still valid
-    bool valid_path = mmap::file<data_type>::valid_path(file_path);
+    bool valid_path = mmap::file::valid_path(file_path);
     if (!valid_path)
     {
         util::log::record
@@ -317,9 +308,9 @@ mmap::file<data_type>::close_and_unmap
     // Flush data
     mmap::status_code flush_status = this->flush
     (
-        MS_SYNC,
         this->file_address,
-        this->file_capacity
+        this->file_capacity_bytes,
+        MS_SYNC
     );
     if (flush_status == mmap::EXTERNAL_ERROR_CODE)
     {
@@ -336,7 +327,7 @@ mmap::file<data_type>::close_and_unmap
     sys::memory::status_code unmap_status = sys::memory::unmap
     (
         this->file_address,
-        this->file_capacity
+        this->file_capacity_bytes
     );
     if (unmap_status == mmap::INTERNAL_ERROR_CODE)
     {
@@ -386,8 +377,7 @@ mmap::file<data_type>::close_and_unmap
 }
 
 
-template <typename data_type>
-mmap::address_type mmap::file<data_type>::remap
+mmap::address_type mmap::file::remap
 (
     const size_type file_capacity
 ) noexcept
@@ -400,8 +390,7 @@ mmap::address_type mmap::file<data_type>::remap
     );
 }
 
-template <typename data_type>
-mmap::address_type mmap::file<data_type>::remap
+mmap::address_type mmap::file::remap
 (
     const address_type  base_address,
     const size_type     file_capacity,
@@ -424,7 +413,7 @@ mmap::address_type mmap::file<data_type>::remap
     address_type file_address = sys::memory::remap
     (
         base_address,
-        this->file_capacity, 
+        this->file_capacity_bytes, 
         file_capacity,
         remap_flag
     );
@@ -444,17 +433,15 @@ mmap::address_type mmap::file<data_type>::remap
 }
 
 
-template <typename data_type>
 mmap::address_type 
-mmap::file<data_type>::address() const noexcept
+mmap::file::address() const noexcept
 {
     return this->file_address;
 }
 
 
-template <typename data_type>
 bool 
-inline mmap::file<data_type>::valid_path
+inline mmap::file::valid_path
 (
     const std::string &file_path
 ) noexcept
@@ -468,6 +455,8 @@ inline mmap::file<data_type>::valid_path
         std::filesystem::path parent_dir = path.parent_path();
         if (!parent_dir.empty() && std::filesystem::exists(parent_dir))
             return true;
+
+        return false;
     }
 
     catch (const std::exception &exception)

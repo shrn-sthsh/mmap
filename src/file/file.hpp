@@ -8,6 +8,7 @@
 #include <lib/file.hpp>
 #include <lib/mmap.hpp>
 
+
 namespace mmap
 {
 
@@ -20,14 +21,13 @@ constexpr sys::file::sint_t GLOBAL_SUCCESS_CODE = EXIT_SUCCESS;
 constexpr sys::file::sint_t EXTERNAL_ERROR_CODE = EXIT_FAILURE;
 constexpr sys::file::sint_t INTERNAL_ERROR_CODE = -1;
 
-template<typename data_type>
 class file
 {
-private:
+protected:
     // User provided file metadata
     std::string  file_path;
-    size_type    file_size;
-    size_type    file_offset;
+    size_type    file_capacity_bytes;
+    size_type    file_offset_bytes;
     address_type base_address;
 
     // Internal file metadata
@@ -35,8 +35,8 @@ private:
     sys::file::descriptor file_descriptor;
 
     // File operation flags
-    sys::file::flag_code   open_flag       = O_RDWR | O_CREAT;
-    sys::file::flag_code   lock_flag       = LOCK_SH;
+    sys::file::flag_code   open_flag = O_RDWR | O_CREAT;
+    sys::file::flag_code   lock_flag = LOCK_SH;
 
     // Mapping flags
     sys::memory::flag_code protocol_flag = PROT_READ | PROT_WRITE;
@@ -68,10 +68,10 @@ public:
         const sys::memory::flag_code  remap_flag    = MREMAP_MAYMOVE
     );
 
-    ~file() noexcept;
+    virtual ~file() noexcept;
     
     // No copies permitted
-    file(const file &other) = delete;
+    file(const file &other)           = delete;
     file operator=(const file &other) = delete;
 
     address_type 
@@ -80,7 +80,7 @@ public:
     address_type 
     virtual open() noexcept;
     address_type 
-    open_and_map
+    virtual open_and_map
     (
         sys::file::flag_code   open_flag,
         sys::file::flag_code   lock_flag,
@@ -91,7 +91,7 @@ public:
     status_code
     virtual flush() noexcept;
     status_code 
-    flush
+    virtual flush
     (
         mmap::address_type     address,
         mmap::size_type        capacity,
@@ -101,7 +101,7 @@ public:
     status_code 
     virtual close() noexcept;
     status_code 
-    close_and_unmap
+    virtual close_and_unmap
     (
         sys::memory::flag_code sync_flag
     ) noexcept;     
@@ -112,7 +112,7 @@ public:
         const size_type file_capacity
     ) noexcept;
     address_type
-    remap
+    virtual remap
     (
         const address_type base_address,
         const size_type    file_capacity,

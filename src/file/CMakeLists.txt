@@ -1,6 +1,8 @@
 # Define local headers & sources
 set(FILE_SOURCES
-  ${CMAKE_CURRENT_SOURCE_DIR}/mmap_file.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/file.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/ordered_file.cpp
+  # ${CMAKE_CURRENT_SOURCE_DIR}/dynamic_file.cpp
 )
 
 # Create the library from the source files
