@@ -5,7 +5,7 @@ A C++ library providing RAII objects abstracting memory mapping system calls and
 
 ## Introduction
 
-The `mmap` system is a versatile call in Unix-like operating systems which provides allows mapping of files or devices into memory via the kernel. 
+The `mmap` system call is a versatile call in Unix-like operating systems which provides allows mapping of files or devices into memory via the kernel. 
 The use cases of this system call are various such as inter-process memory sharing, file I/O optimization, user-space device control to name a few.
 These calls have a C-style API that requires intricate knowledge the combinations of the many flags, options, and protocols available. 
 
