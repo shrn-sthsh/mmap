@@ -35,8 +35,8 @@ protected:
     sys::file::descriptor file_descriptor;
 
     // File operation flags
-    sys::file::flag_code   open_flag = O_RDWR | O_CREAT;
-    sys::file::flag_code   lock_flag = LOCK_SH;
+    sys::file::flag_code open_flag = O_RDWR | O_CREAT;
+    sys::file::flag_code lock_flag = LOCK_SH;
 
     // Mapping flags
     sys::memory::flag_code protocol_flag = PROT_READ | PROT_WRITE;

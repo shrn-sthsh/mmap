@@ -10,7 +10,7 @@
 /**
  *  @brief Record Line to Designated Log 
  *
- *  @param message:     R-value string message
+ *  @param message:     L/R-value string message
  *  @param type:        type of message
  *  @param [opt] flush: flush log immediately
  *
@@ -19,11 +19,11 @@
  *  writing to buffer.
  */
 void
-util::log::record
+util::log::message
 (
-    const std::string     &&message,
-    const util::log::type   type,
-    const bool              flush
+    const std::string     &message,
+    const util::log::type  type,
+    const bool             flush
 ) noexcept
 {
     const util::clock::time_t time = util::clock::time();
@@ -79,6 +79,30 @@ util::log::record
             std::clog.flush(); 
     }
 }
+
+/**
+ *  @brief Record Line to Designated Log 
+ *
+ *  @param message:     L/R-value string message
+ *  @param type:        type of message
+ *  @param [opt] flush: flush log immediately
+ *
+ *  @details Similar call to record but throws runtime error with
+ *  message as well.
+ */
+template <typename error_type>
+void
+util::log::error
+(
+    const std::string     &message,
+    const util::log::type  type,
+    const bool             flush
+)
+{
+    util::log::message(message, type, flush);
+    throw error_type(message);
+}
+
 
 
 /**

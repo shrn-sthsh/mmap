@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 
 
@@ -32,12 +33,21 @@ constexpr bool ASYNC = false;
 
 // Record a message to appropriate log
 void
-record
+message
 (
-    const std::string &&message,
-    const type          type  = type::STATUS,
-    const bool          flush = ASYNC
+    const std::string &message,
+    const type         type  = type::STATUS,
+    const bool         flush = ASYNC
 ) noexcept;
+
+template <typename error_type = std::runtime_error>
+void
+error
+(
+    const std::string &message,
+    const type         type  = type::ERROR,
+    const bool         flush = FLUSH
+);
 
 // String short hands
 constexpr char SPACE[]    = " ";

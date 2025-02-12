@@ -10,9 +10,9 @@ add_library(
   file STATIC ${FILE_SOURCES}
 )
 
-# Link dependencies 
+# Include and link dependencies 
 target_link_libraries(
-    file PRIVATE mmap_system file_system
+    file PRIVATE mmap_system file_system type_utility
 )
 
 # Add headers to includes
