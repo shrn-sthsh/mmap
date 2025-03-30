@@ -5,10 +5,11 @@
 #include <cstddef>
 #include <cstdlib>
 #include <memory>
-#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
+
+#include <boost/unordered/unordered_flat_map_fwd.hpp>
 
 #include <lib/file.hpp>
 #include <lib/mmap.hpp>
@@ -307,7 +308,7 @@ private:
     
     // allocation metadata store
     using array = std::vector<metadata_type>;
-    using table = std::unordered_map
+    using table = boost::unordered_flat_map
     <
         std::weak_ptr<data_type []>, 
         metadata_type, 
