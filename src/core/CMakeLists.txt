@@ -5,6 +5,7 @@ find_package(Boost REQUIRED)
 # Define local headers & sources
 set(FILE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/allocator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/internal_allocator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/standard_allocator.cpp
 )
 

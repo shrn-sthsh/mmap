@@ -14,13 +14,11 @@
 #include <lib/file.hpp>
 #include <lib/mmap.hpp>
 
+#include "internal_allocator.hpp"
+
 
 namespace mmap 
 {
-
-constexpr sint_t GLOBAL_SUCCESS_CODE = EXIT_SUCCESS;
-constexpr sint_t EXTERNAL_ERROR_CODE = EXIT_FAILURE;
-constexpr sint_t INTERNAL_ERROR_CODE = sint_t{-1};
 
 namespace core
 {
@@ -60,12 +58,13 @@ concept stateful = std::same_as<function_type, decltype(sys::memory::protect)>
  *  device to a chunk, or creating an inter-process shared chunk, the 
  *  appropriate file descriptor should be created and provided with flags.
  */
-template <typename T>
+template <typename T = std::byte>
 class allocator 
 {
 public:
     using data_type = T;
     using size_type = std::size_t;
+    using diff_type = std::make_signed_t<size_type>;
 
     using handle_type  = std::weak_ptr<data_type []>;
     using pointer_type = std::shared_ptr<std::byte []>;
@@ -131,6 +130,14 @@ public:
     (
         const handle_type            &memory_handle,
         const size_type               data_capacity,
+        const sys::memory::flag_code  remapping_flags = MREMAP_MAYMOVE
+    );
+
+    handle_type
+    reallocate
+    (
+        const handle_type            &memory_handle,
+        const diff_type               move_capacity,
         const sys::memory::flag_code  remapping_flags = MREMAP_MAYMOVE
     );
 
@@ -318,36 +325,13 @@ private:
     bool default_storage = true;
     std::variant<array, table> storage;
 
-           
+    // executor constants
+    static constexpr size_type stateful_argument = 2; 
+
     // internal allocator
-    handle_type 
-    inline __allocator__
-    (
-        const size_type                   memory_capacity, 
-        const sys::memory::flag_code      mapping_flags    = MAP_PRIVATE | MAP_ANONYMOUS,
-        const sys::memory::flag_code      mapping_protocol = PROT_READ | PROT_WRITE,
-        const sys::memory::address_type   hint_address     = sys::memory::DEFAULT_BASE,
-        const sys::file::descriptor_type &file_descriptor  = sys::file::INVALID_FILE,
-        const sys::file::size_type        file_offset      = sys::file::ZERO_OFFSET
-    );
-
-    // internal reallocator
-    handle_type 
-    inline __reallocator__ 
-    (
-        const sys::memory::address_type memory_address,
-        const sys::memory::size_type    memory_capacity, 
-        const sys::memory::size_type    memory_increase,
-        const sys::memory::flag_code    remapping_flags = MREMAP_MAYMOVE
-    );
-
-    // internal deallocator
-    void 
-    inline __deallocator__
-    (
-        const sys::memory::address_type memory_address,
-        const sys::memory::size_type    memory_capacity
-    );
+    inline static constexpr auto &__allocate__   = mmap::core::allocate;
+    inline static constexpr auto &__reallocate__ = mmap::core::reallocate;
+    inline static constexpr auto &__deallocate__ = mmap::core::deallocate;
 };
 
 } // core namespace

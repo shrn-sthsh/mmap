@@ -151,7 +151,7 @@ mmap::core::allocator<T>::allocate
     const auto 
     memory_pointer = mmap::core::allocator<data_type>::pointer_type
     (
-        this->__allocator__
+        this->__allocate__
         (
             memory_capacity,
             mapping_flags,
@@ -160,7 +160,7 @@ mmap::core::allocator<T>::allocate
             file_descriptor,
             file_offset
         ),
-        this->__deallocator__
+        this->__deallocate__
     );
 
     // save weak reference external key
@@ -262,14 +262,149 @@ mmap::core::allocator<T>::reallocate
             const auto
             memory_pointer = mmap::core::allocator<data_type>::pointer_type
             (
-                this->__reallocator__
+                this->__reallocate__
                 (
                     static_cast<address_type>(metadata.memory_pointer.get()),
                     metadata.memory_capacity,
                     resized_memory_capacity,
                     remapping_flags
                 ),
-                this->__deallocator__
+                this->__deallocate__
+            );
+            
+            metadata.memory_pointer   = std::move(memory_pointer);
+            metadata.memory_capacity  = resized_memory_capacity;
+            metadata.remapping_flags |= remapping_flags;
+
+            const auto
+            key = mmap::core::allocator<data_type>::handle_type{memory_pointer};
+
+            return key;
+        }
+    }
+
+    // table-based storage execution
+    else
+    {
+        // weak pointer is table key
+        const auto &key = memory_handle;
+
+        // save table reference
+        using table = mmap::core::allocator<data_type>::table;
+        table &storage = std::get<table>(this->storage);
+
+        // pull out key-value pair
+        const auto node = storage.extract(key);
+        if (!node)
+        {
+            const mmap::core::allocator<data_type>::metadata_type 
+            &metadata = node.mapped();
+
+            // reallocate and update metadata
+            using address_type = sys::memory::address_type;
+            const auto
+            memory_pointer = mmap::core::allocator<data_type>::pointer_type
+            (
+                this->__reallocate__
+                (
+                    static_cast<address_type>(metadata.memory_pointer.get()),
+                    metadata.memory_capacity,
+                    resized_memory_capacity,
+                    remapping_flags
+                ),
+                this->__deallocate__
+            );            
+            
+            metadata.memory_pointer   = std::move(memory_pointer);
+            metadata.memory_capacity  = resized_memory_capacity;
+            metadata.remapping_flags |= remapping_flags;
+
+            // replace old pair with new
+            const auto
+            key = mmap::core::allocator<data_type>::handle_type{memory_pointer};
+            storage.emplace(key, std::move(metadata));
+
+            return key;
+        }
+    }
+
+    // throw on no allocation metadata found
+    util::log::error<std::runtime_error>
+    (
+        "Reallocator was unable reallocate possible allocation becuase "
+        "no data on such an allocation exists internally",
+        util::log::type::ERROR
+    ); 
+}
+
+
+template<typename T>
+mmap::core::allocator<T>::handle_type
+mmap::core::allocator<T>::reallocate
+(
+    const mmap::core::allocator<T>::handle_type &memory_handle,
+    const mmap::core::allocator<T>::diff_type    move_capacity, 
+    const sys::memory::flag_code                 remapping_flags
+) 
+{
+    using data_type = T;
+
+    // validate memory handle 
+    if (memory_handle.expired())
+    {
+        util::log::error<std::runtime_error>
+        (
+            "Argument (1) to rellocator was an invalid weak reference to a"
+            "possible allocation",
+            util::log::type::FLAG
+        );
+    } 
+
+    // array-based storage execution
+    if (this->default_storage)
+    { 
+        // capture allocation's strong pointer
+        const mmap::core::allocator<data_type>::pointer_type
+        key = memory_handle.lock();
+
+        // search for allocation's metadata by strong pointer as key
+        using array = mmap::core::allocator<data_type>::array;
+        for (const auto &metadata: std::get<array>(this->storage))
+        {
+            if (metadata.memory_pointer != key)
+                continue;
+
+            // validate capacity
+            const auto
+            resized_memory_capacity = static_cast<mmap::core::allocator<T>::size_type>
+            (
+                (metadata.memory_capacity + move_capacity) * sizeof(data_type)
+            );
+
+            if (resized_memory_capacity <= sys::memory::ZERO_SPACE)
+            {
+                util::log::error<std::invalid_argument>
+                (
+                    "Argument (2) to rellocator results in an unsatisfiable "
+                    "memory capcity: negative integer amount",
+                    util::log::type::ERROR
+                );
+            }
+
+            // reallocate and update metadata within data structure
+            using address_type = sys::memory::address_type;
+
+            const auto
+            memory_pointer = mmap::core::allocator<data_type>::pointer_type
+            (
+                this->__reallocate__
+                (
+                    static_cast<address_type>(metadata.memory_pointer.get()),
+                    metadata.memory_capacity,
+                    resized_memory_capacity,
+                    remapping_flags
+                ),
+                this->__deallocate__
             );
             
             metadata.memory_pointer   = std::move(memory_pointer);
@@ -300,19 +435,36 @@ mmap::core::allocator<T>::reallocate
             const mmap::core::allocator<data_type>::metadata_type 
             &metadata = node.mapped();
 
+            // validate capacity
+            const auto
+            resized_memory_capacity = static_cast<mmap::core::allocator<T>::size_type>
+            (
+                (metadata.memory_capacity + move_capacity) * sizeof(data_type)
+            );
+
+            if (resized_memory_capacity <= sys::memory::ZERO_SPACE)
+            {
+                util::log::error<std::invalid_argument>
+                (
+                    "Argument (2) to rellocator results in an unsatisfiable "
+                    "memory capcity: negative integer amount",
+                    util::log::type::ERROR
+                );
+            }
+
             // reallocate and update metadata
             using address_type = sys::memory::address_type;
             const auto
             memory_pointer = mmap::core::allocator<data_type>::pointer_type
             (
-                this->__reallocator__
+                this->__reallocate__
                 (
                     static_cast<address_type>(metadata.memory_pointer.get()),
                     metadata.memory_capacity,
                     resized_memory_capacity,
                     remapping_flags
                 ),
-                this->__deallocator__
+                this->__deallocate__
             );            
             
             metadata.memory_pointer   = std::move(memory_pointer);
@@ -384,7 +536,7 @@ mmap::core::allocator<T>::deallocate
 
             // deallocate allocation
             using address_type = sys::memory::address_type;
-            this->__deallocator__
+            this->__deallocate__
             (
                 static_cast<address_type>(metadata.memory_pointer.get()),
                 metadata.memory_capacity
@@ -409,7 +561,7 @@ mmap::core::allocator<T>::deallocate
         table &storage = std::get<table>(this->storage);
 
         // pull out key-value pair
-        auto node = storage.extract(key);
+        const auto node = storage.extract(key);
         if (!node)
         {
             const mmap::core::allocator<data_type>::metadata_type 
@@ -417,7 +569,7 @@ mmap::core::allocator<T>::deallocate
 
             // deallocate allocation
             using address_type = sys::memory::address_type;
-            this->__deallocator__
+            this->__deallocate__
             (
                 static_cast<address_type>(metadata.memory_pointer.get()),
                 metadata.memory_capacity
@@ -654,15 +806,19 @@ auto mmap::core::allocator<T>::execute
                 if constexpr 
                 (std::same_as<function_type, decltype(sys::memory::protect)>)
                 {
-                    metadata.mapping_protocol 
-                        |= std::get<2>(std::forward_as_tuple(arguments...));
+                    metadata.mapping_protocol |= std::get<stateful_argument>
+                    (
+                        std::forward_as_tuple(arguments...)
+                    );
                 }
 
                 else if constexpr
                 (std::same_as<function_type, decltype(sys::memory::advise)>)
                 {
-                    metadata.paging_advice
-                        |= std::get<2>(std::forward_as_tuple(arguments...));
+                    metadata.paging_advice |= std::get<stateful_argument>
+                    (
+                        std::forward_as_tuple(arguments...)
+                    );
                 }
 
                 // auxiliary routine execution
@@ -702,15 +858,19 @@ auto mmap::core::allocator<T>::execute
                 if constexpr 
                 (std::same_as<function_type, decltype(sys::memory::protect)>)
                 {
-                    metadata->mapping_protocol 
-                        |= std::get<2>(std::forward_as_tuple(arguments...));
+                    metadata->mapping_protocol |= std::get<stateful_argument>
+                    (
+                        std::forward_as_tuple(arguments...)
+                    );
                 }
 
                 else if constexpr
                 (std::same_as<function_type, decltype(sys::memory::advise)>)
                 {
-                    metadata->paging_advice
-                        |= std::get<2>(std::forward_as_tuple(arguments...));
+                    metadata->paging_advice |= std::get<stateful_argument>
+                    (
+                        std::forward_as_tuple(arguments...)
+                    );
                 }
 
                 // auxiliary routine execution
@@ -928,145 +1088,6 @@ mmap::core::allocator<T>::address
 ) const noexcept 
 {
     return &instance;
-}
-
-
-/**
- *  \fn Stateful Allocator: Internal Allocator
- *  
- *  Internal allocator for chunk allocation and mapping.  Wraps mmap system 
- *  call to kernel.
- *
- *  \note Class level access only.
- *
- *  \param memory_capacity:  size of chunk in bytes
- *  \param mapping_flags:    indicators to type of mapping
- *  \param mapping_protocol: access permissions and memory growth pattern
- *  \param hint_address:     base adddress for mmap to use as hint or real base
- *  \param file_descriptor:  optional file descriptor for other functions
- *  \param file_offset:      offset into the file (in bytes)
- *
- *  \ret   memory address:   a raw pointer to the allocated chunk on sucess
- *                           and MAP_FAILED on failure
- */
-template <typename T>
-mmap::core::allocator<T>::handle_type
-inline mmap::core::allocator<T>::__allocator__
-(
-    const sys::memory::size_type      memory_capacity, 
-    const sys::memory::flag_code      mapping_flags,
-    const sys::memory::flag_code      mapping_protocol,
-    const sys::memory::address_type   hint_address,
-    const sys::file::descriptor_type &file_descriptor,
-    const sys::file::size_type        file_offset
-)
-{
-    // make mapping system call
-    const sys::memory::address_type 
-    memory_address = sys::memory::map
-    (
-        hint_address,
-        memory_capacity,
-        mapping_protocol,
-        mapping_flags,
-        file_descriptor,
-        file_offset
-    );
-
-    if (memory_address == MAP_FAILED)
-    {
-        util::log::error<std::bad_alloc>
-        (
-            "Kernel failed to allocate and map memory requested chunk",
-            util::log::type::ERROR
-        );
-    }
-
-    return memory_address;
-}
-
-
-/**
- *  \fn Stateful Allocator: Internal Reallocator
- *  
- *  Internal reallocator for chunk rellocation and remapping.  Wraps mremap
- *  system call to kernel.  
- *
- *  \note Class level access only.
- *
- *  \param memory_address:  memory adddress for already allocated chunk
- *  \param memory_capacity: size of current chunk in bytes
- *  \param newset_capacity: size of new chunk in bytes
- *  \param remapping_flags: indicators for the type of remapping
- */
-template <typename T>
-mmap::core::allocator<T>::handle_type
-inline mmap::core::allocator<T>::__reallocator__
-(
-    const sys::memory::address_type memory_address,
-    const sys::memory::size_type    memory_capacity,
-    const sys::memory::size_type    newset_capacity,
-    const sys::memory::flag_code    remapping_flags 
-)
-{
-    // make remapping system call
-    const sys::memory::address_type
-    remapped_address = sys::memory::remap
-    (
-        memory_address,
-        memory_capacity,
-        newset_capacity,
-        remapping_flags
-    );
-
-    if (remapped_address == MAP_FAILED)
-    {
-        util::log::error<std::bad_alloc>
-        (
-            "Kernel failed to reallocate and remap memory existing chunk",
-            util::log::type::ERROR
-        );
-    }
-
-    return remapped_address;
-}
-
-
-/**
- *  \fn Stateful Allocator: Internal Deallocator
- *  
- *  Internal deallocator for chunk dellocation and unmapping.  Wraps munmap
- *  system call to kernel.  
- *
- *  \note Class level access only.
- *
- *  \param memory_address: memory adddress for already allocated chunk
- *  \param memory_size:    size of chunk in bytes
- */
-template <typename T>
-void 
-inline mmap::core::allocator<T>::__deallocator__
-(
-    sys::memory::address_type memory_address,
-    sys::memory::size_type    memory_capacity
-)
-{
-    // make unmapping system call
-    const sys::memory::status_code 
-    unmap_status = sys::memory::unmap
-    (
-        memory_address,
-        memory_capacity
-    );
-
-    if (unmap_status == mmap::INTERNAL_ERROR_CODE)
-    {
-        util::log::error<std::bad_alloc>
-        (
-            "Kernel failed to unmap and deallocate existing memory chunk",
-            util::log::type::ERROR
-        );
-    }
 }
 
 

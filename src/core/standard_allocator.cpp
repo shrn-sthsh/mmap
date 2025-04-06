@@ -13,7 +13,7 @@
  *  
  *  Similar to constructor, does nothing once again; no state to copy.
  *
- *  \param other:  l-value reference to another allocator (copy argument)
+ *  \param other: l-value reference to another allocator (copy argument)
  */
 template <typename T>
 template <typename U>
@@ -40,7 +40,7 @@ mmap::core::std::allocator<T>::operator=
  *  
  *  Similar to constructor, does nothing once again; no state to move.
  *
- *  \param other:  r-value reference to another allocator (move argument)
+ *  \param other: r-value reference to another allocator (move argument)
  */
 template <typename T>
 template <typename U>
@@ -71,9 +71,9 @@ mmap::core::std::allocator<T>::operator=
  *
  *  To create a shared chunk, create and map a chunk to a file or a 
  *  device, or more, the appropriate file descriptor, flags, and protocols 
- *  must be provieded as arguments to override the defaults.
+ *  must be provided as arguments to override the defaults.
  *
- *  Also, the provieded arguments are not checked in this user space routine in 
+ *  Also, the provided arguments are not checked in this user space routine in 
  *  an effort to maintain a similar level of performance to direct system calls 
  *  the.  The kernel will check and an exception is thrown on failure.
  *
@@ -88,17 +88,19 @@ mmap::core::std::allocator<T>::operator=
  *                           def: invalid (-1) for anonymous mapping
  *  \param file_offset:      offset into the file (in bytes)
  *                           def: 0 bytes
+ *
+ *  \ret   memory_pointer:   a raw pointer to a memory allocation
  */
 template <typename T>
 typename mmap::core::std::allocator<T>::return_type
 mmap::core::std::allocator<T>::allocate
 (
     const mmap::core::std::allocator<T>::size_type  data_capacity, 
-    const sys::memory::flag_code                        mapping_flags,
-    const sys::memory::flag_code                        mapping_protocol,
-    const sys::memory::address_type                     hint_address,
-    const sys::file::descriptor_type                   &file_descriptor,
-    const sys::file::size_type                          file_offset
+    const sys::memory::flag_code                    mapping_flags,
+    const sys::memory::flag_code                    mapping_protocol,
+    const sys::memory::address_type                 hint_address,
+    const sys::file::descriptor_type               &file_descriptor,
+    const sys::file::size_type                      file_offset
 )
 {
     using data_type = T;
@@ -143,8 +145,8 @@ mmap::core::std::allocator<T>::allocate
     }
 
     // make new allocation
-    pointer_type 
-    memory_pointer = this->__allocator__
+    const pointer_type 
+    memory_pointer = this->__allocate__
     (
         memory_capacity,
         hint_address,
@@ -155,6 +157,91 @@ mmap::core::std::allocator<T>::allocate
     );
 
     return static_cast<return_type>(memory_pointer);
+}
+
+
+/**
+ *  \fn Standard Allocator: Reallocator
+ *  
+ *  Reallocates memory mappings already allocated by allocate routine.  The 
+ *  memory region will be reallocated according to flags provided and an updated
+ *  memory pointer will be returned.
+ *
+ *  \param memory_address:     address of start of already allocated mapping
+ *  \param curr_data_capacity: current capacity of the T type items (not in bytes)
+ *  \param next_data_capacity: new capacity of the T type items (not in bytes)
+ *  \param remapping_flags:    indicators for the type of remapping
+ *                             def: mapping MAY MOVE
+ *
+ *  \ret   memory_pointer:     a raw pointer to a memory allocation
+ */
+template<typename T>
+typename mmap::core::std::allocator<T>::return_type
+mmap::core::std::allocator<T>::reallocate
+(
+    const mmap::core::std::allocator<T>::pointer_type memory_address,
+    const mmap::core::std::allocator<T>::size_type    curr_data_capacity,
+    const mmap::core::std::allocator<T>::size_type    next_data_capacity,
+    const sys::memory::flag_code                      remapping_flags
+) 
+{
+    using data_type = T;
+
+    // validate capacities
+    const mmap::core::std::allocator<data_type>::size_type 
+    curr_memory_capacity = curr_data_capacity * sizeof(data_type),
+    next_memory_capacity = next_data_capacity * sizeof(data_type);
+
+    if (curr_memory_capacity <= sys::memory::ZERO_SPACE)
+    {
+        util::log::error<::std::invalid_argument>
+        (
+            "Argument to reallocator must be a nonzero integer representing current"
+            "capacity of allocation as a number of template argument instances",
+            util::log::type::ERROR
+        ); 
+    }
+    
+    if (next_memory_capacity <= sys::memory::ZERO_SPACE)
+    {
+        util::log::error<::std::invalid_argument>
+        (
+            "Argument to reallocator must be a nonzero integer representing next"
+            "capacity of allocation as a number of template argument instances",
+            util::log::type::ERROR
+        ); 
+    }
+
+    // reallocate mapping
+    const pointer_type 
+    memory_pointer = this->__reallocate__
+    (
+        memory_address,
+        curr_memory_capacity,
+        next_memory_capacity,
+        remapping_flags
+    );
+
+    return static_cast<return_type>(memory_pointer);
+}
+
+template<typename T>
+typename mmap::core::std::allocator<T>::return_type
+mmap::core::std::allocator<T>::reallocate
+(
+    const mmap::core::std::allocator<T>::pointer_type memory_address,
+    const mmap::core::std::allocator<T>::size_type    data_capacity,
+    const mmap::core::std::allocator<T>::diff_type    move_capacity,
+    const sys::memory::flag_code                      remapping_flags
+) 
+{
+    return this->reallocate
+    (
+        memory_address,
+        data_capacity,
+        data_capacity + move_capacity,
+        remapping_flags
+    );
 }
 
 
@@ -174,7 +261,7 @@ mmap::core::std::allocator<T>::deallocate
 (
     const mmap::core::std::allocator<T>::pointer_type memory_address,
     const mmap::core::std::allocator<T>::size_type    data_capacity
-) noexcept
+) 
 {
     using data_type = T;
 
@@ -193,9 +280,9 @@ mmap::core::std::allocator<T>::deallocate
     }
 
     // deallocate mapping 
-    this->__deallocator__
+    this->__deallocate__
     (
-        memory_capacity, 
+        memory_address, 
         memory_capacity
     );
 }
@@ -230,7 +317,7 @@ mmap::core::std::allocator<T>::construct
  *  
  *  Object of type U will be destructed at the exact address provided.
  *
- *  \param address:  address of exact spot in chunk to construct object
+ *  \param address: address of exact spot in chunk to construct object
  */
 template <typename U>
 void 
@@ -247,9 +334,10 @@ destroy
 /**
  *  \fn Standard Allocator: Max Size / Capacity
  *  
- *  Object of type U will be destructed at the exact address provided.
+ *  Maximum size for a given allocation.  The limit here is that of the mmap 
+ *  kernel call.
  *
- *  \param address:  address of exact spot in chunk to construct object
+ *  \param address: address of exact spot in chunk to construct object
  */
 template <typename T>
 typename mmap::core::std::allocator<T>::size_type
@@ -288,97 +376,4 @@ mmap::core::std::allocator<T>::address
 ) const noexcept 
 {
     return &instance;
-}
-
-
-/**
- *  \fn Standard Allocator: Internal Allocator
- *  
- *  Internal allocator for chunk allocation and mapping.  Wraps mmap system 
- *  call to kernel.
- *
- *  \note Class level access only.
- *
- *  \param memory_size:      size of chunk in bytes
- *  \param mapping_flags:    indicators to type of mapping
- *  \param mapping_protocol: access permissions and memory growth pattern
- *  \param hint_address:     base adddress for mmap to use as hint or base
- *  \param file_descriptor:  optional file descriptor for other functions
- *  \param file_offset:      offset into the file (in bytes)
- *
- *  \ret   memory address:   a raw pointer to the allocated chunk on sucess
- *                           and MAP_FAILED on failure
- */
-template <typename T>
-typename mmap::core::std::allocator<T>::return_type
-inline mmap::core::std::allocator<T>::__allocator__
-(
-    const sys::memory::size_type      memory_size, 
-    const sys::memory::flag_code      mapping_flags,
-    const sys::memory::flag_code      mapping_protocol,
-    const sys::memory::address_type   hint_address,
-    const sys::file::descriptor_type &file_descriptor,
-    const sys::file::size_type        file_offset
-)
-{
-    // make mapping syscall
-    const sys::memory::address_type 
-    memory_address = sys::memory::map
-    (
-        hint_address,
-        memory_size,
-        mapping_protocol,
-        mapping_flags,
-        file_descriptor,
-        file_offset
-    );
-
-    if (memory_address == MAP_FAILED)
-    {
-        util::log::error<::std::bad_alloc>
-        (
-            "Kernel failed to allocate and map memory requested chunk",
-            util::log::type::ERROR
-        );
-    }
-
-    return memory_address;
-}
-
-
-/**
- *  \fn Standard Allocator: Internal Deallocator
- *  
- *  Internal deallocator for chunk dellocation and unmapping.  Wraps munmap
- *  system call to kernel.  
- *
- *  \note Class level access only.
- *
- *  \param memory_address: memory adddress for already allocated chunk
- *  \param memory_size:    size of chunk in bytes
- */
-template <typename T>
-void 
-inline mmap::core::std::allocator<T>::__deallocator__
-(
-    sys::memory::address_type memory_address,
-    sys::memory::size_type    memory_size
-)
-{
-    // make unmapping syscall
-    const sys::memory::status_code 
-    unmap_status = sys::memory::unmap
-    (
-        memory_address,
-        memory_size
-    );
-
-    if (unmap_status == mmap::INTERNAL_ERROR_CODE)
-    {
-        util::log::error<::std::bad_alloc>
-        (
-            "Kernel failed to unmap and deallocate memory requested chunk",
-            util::log::type::ERROR
-        );
-    }
 }
